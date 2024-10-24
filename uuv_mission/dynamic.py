@@ -2,7 +2,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 import matplotlib.pyplot as plt
-from .terrain import generate_reference_and_limits
+import sys
+import csv
+sys.path.append('D:/Engineering/Year 3/B1/Numerical Algorithms/b1-coding-practical-mt24/uuv_mission')
+
+from terrain import generate_reference_and_limits
+
 
 class Submarine:
     def __init__(self):
@@ -41,11 +46,13 @@ class Submarine:
     
 class Trajectory:
     def __init__(self, position: np.ndarray):
-        self.position = position  
+        self.position = position
         
     def plot(self):
         plt.plot(self.position[:, 0], self.position[:, 1])
         plt.show()
+
+
 
     def plot_completed_mission(self, mission: Mission):
         x_values = np.arange(len(mission.reference))
@@ -64,37 +71,48 @@ class Trajectory:
 
 @dataclass
 class Mission:
-    reference: np.ndarray
-    cave_height: np.ndarray
-    cave_depth: np.ndarray
+    reference: list
+    cave_height: list
+    cave_depth: list
+
+    def __init__(self, reference, cave_height, cave_depth):
+        self.reference = reference
+        self.cave_height = cave_height
+        self.cave_depth = cave_depth
 
     @classmethod
-    def random_mission(cls, duration: int, scale: float):
-        (reference, cave_height, cave_depth) = generate_reference_and_limits(duration, scale)
-        return cls(reference, cave_height, cave_depth)
+    def from_csv(cls, file_name):
+        # Initialize lists to store data from the CSV file
+        reference = []
+        cave_height = []
+        cave_depth = []
 
-    @classmethod
-    def from_csv(cls, file_name: str):
-        import csv
-        # Read the CSV file
-        with open(file_name, mode='r') as file:
-            csv_reader = csv.reader(file)
-            next(csv_reader)  # Skip the header if there is one
-            
-            for row in csv_reader:
-                #The CSV file has three columns: reference, cave_height, cave_depth
-                reference.append(float(row[0]))
-                cave_height.append(float(row[1]))
-                cave_depth.append(float(row[2]))
+        try:
+            # Read the CSV file
+            with open(file_name, mode='r') as file:
+                csv_reader = csv.reader(file)
+                next(csv_reader)  # Skip the header if there is one
 
-        # Convert lists to numpy arrays
-        reference = np.array(reference)
-        cave_height = np.array(cave_height)
-        cave_depth = np.array(cave_depth)
+                for row in csv_reader:
+
+                    # Make sure the row has the expected number of columns
+                    if len(row) < 3:
+                        continue
+
+                    # Append data to the lists
+                    reference.append(float(row[0]))  # Convert to float
+                    cave_height.append(float(row[1]))  # Convert to float
+                    cave_depth.append(float(row[2]))  # Convert to float
+
+        except FileNotFoundError:
+            print(f"File not found: {file_name}")
+            return None
+        except ValueError as e:
+            print(f"Value error: {e} - Check the data format in the CSV.")
+            return None
 
         # Return an instance of Mission
         return cls(reference, cave_height, cave_depth)
-        pass
 
 
 class ClosedLoop:
@@ -114,8 +132,13 @@ class ClosedLoop:
 
         for t in range(T):
             positions[t] = self.plant.get_position()
-            observation_t = self.plant.get_depth()
-            # Call your controller here
+            observation_t = self.plant.get_depth()  # Get current depth
+            reference_t = mission.reference[t]     # Get reference depth
+
+            error_t = reference_t - observation_t  # Compute the error (e[t])
+            actions[t] = self.controller.control(error_t)  # Compute control action using PDController
+            
+            # Apply control action and disturbance to the submarine
             self.plant.transition(actions[t], disturbances[t])
 
         return Trajectory(positions)
